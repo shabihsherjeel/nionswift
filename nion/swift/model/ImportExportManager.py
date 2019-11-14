@@ -618,6 +618,65 @@ class NumPyImportExportHandler(ImportExportHandler):
                 raise
 
 
+import h5py
+toExtract = []
+class NexusImportExportHandler(ImportExportHandler):
+    """ Comments later
+    """
+    def __init__(self, io_handler_id, name, extensions):
+        super().__init__(io_handler_id, name, extensions)
+
+    def h5pyToDict(self, h5pyObject):
+        dict = {}
+
+        for x in h5pyObject.keys():
+            if x != 'data' and isinstance(h5pyObject[x], h5py.Dataset):
+                if(len(h5pyObject[x][()])<2):
+                    dict[x] = h5pyObject[x][()][0]
+                else:
+                    dict[x] = [x for x in h5pyObject[x][()]]
+        print(dict)
+        return dict
+
+    def read_data_elements(self, ui, extension, path):
+        f = h5py.File(path, "r")
+        global toExtract
+        def visitor(name, node):
+            global toExtract
+            if('data' in name):
+                if isinstance(node, h5py.Dataset):
+                    toExtract.append(name)
+                # else:
+                #     print("Found group: " + name)
+                #     for x in f[name]:
+                #         print(x)
+        f.visititems(visitor)
+        data_elements = []
+        for entry in toExtract:
+            data_element = dict()
+            arr = numpy.empty(f[entry].shape)
+            f[entry].read_direct(arr)
+            if(arr.shape[0] < arr.shape[1] and arr.shape[0] < arr.shape[2]):
+                arr = numpy.reshape(arr,(arr.shape[1],arr.shape[2],arr.shape[0]), 'C')
+            data_element["title"] = entry
+            data_element["data"] = arr
+            data_element["metadata"] = self.h5pyToDict(f[entry[:entry.rfind('/')]])
+            data_elements.append(data_element)
+        # toExtract = ['entry1/data']
+        # for entry in toExtract:
+        #     # for data in f[entry]:
+        #     arr = numpy.empty(f[entry].shape)
+        #     data_element = dict()
+        #     f[entry].read_direct(arr)
+        #     data_element["title"] = entry
+        #     data_element["metadata"] = {'exposure_time':f['entry1/instrument_name_shortform/camera/exposure_time'][()]}
+        #     data_element["data"] = arr
+        #     # data_element = create_data_and_metadata(arr, metadata={'exposure_time':f['entry1/instrument_name_shortform/camera/exposure_time'][()]})
+        #     data_elements.append(data_element)
+        f.close()
+        toExtract = []
+        return data_elements
+
 # Register the intrinsic I/O handlers.
 ImportExportManager().register_io_handler(StandardImportExportHandler("jpeg-io-handler", "JPEG", ["jpg", "jpeg"]))
 ImportExportManager().register_io_handler(StandardImportExportHandler("png-io-handler", "PNG", ["png"]))
@@ -627,3 +686,4 @@ ImportExportManager().register_io_handler(CSVImportExportHandler("csv-io-handler
 ImportExportManager().register_io_handler(CSV1ImportExportHandler("csv1-io-handler", "CSV 1D", ["csv"]))
 ImportExportManager().register_io_handler(NDataImportExportHandler("ndata1-io-handler", "NData 1", ["ndata1"]))
 ImportExportManager().register_io_handler(NumPyImportExportHandler("numpy-io-handler", "Raw NumPy", ["npy"]))
+ImportExportManager().register_io_handler(NexusImportExportHandler("nexus-io-handler", "Nexus", ["nxs", "nex", "hdf5"]))
